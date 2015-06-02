@@ -48,7 +48,19 @@ namespace
 #else
   void* convert_to_cstring(PyObject* obj)
   {
-      return PyUnicode_Check(obj) ? _PyUnicode_AsString(obj) : 0;
+      if PyUnicode_Check(obj)
+      {
+          PyObject* pStrObj = PyUnicode_AsEncodedString(obj, "utf8", "surrogateescape");
+
+          if (PyErr_Occurred())
+              throw_error_already_set();
+
+          char* zStr = PyBytes_AsString(pStrObj);
+          char* zStrDup = strdup(zStr);
+          Py_DECREF(pStrObj);
+          return zStrDup;
+      }
+      return 0;
   }
 #endif
 
@@ -367,7 +379,11 @@ namespace
   };
 
 #if PY_VERSION_HEX >= 0x03000000
-  unaryfunc py_unicode_as_string_unaryfunc = PyUnicode_AsUTF8String;
+  PyObject* UnicodeEncodeWithSurrogate (PyObject *unicode)
+  {
+      return PyUnicode_AsEncodedString(unicode, "utf8", "surrogateescape");
+  }
+  unaryfunc py_unicode_as_string_unaryfunc = UnicodeEncodeWithSurrogate;
 #endif
 
   // A SlotPolicy for extracting C++ strings from Python objects.
@@ -486,7 +502,7 @@ namespace
 BOOST_PYTHON_DECL PyObject* do_return_to_python(char x)
 {
 #if PY_VERSION_HEX >= 0x03000000
-    return PyUnicode_FromStringAndSize(&x, 1);
+    return PyUnicode_DecodeUTF8(&x, 1, "surrogateescape");
 #else
     return PyString_FromStringAndSize(&x, 1);
 #endif
@@ -495,7 +511,7 @@ BOOST_PYTHON_DECL PyObject* do_return_to_python(char x)
 BOOST_PYTHON_DECL PyObject* do_return_to_python(char const* x)
 {
 #if PY_VERSION_HEX >= 0x03000000
-    return x ? PyUnicode_FromString(x) : boost::python::detail::none();
+    return x ? PyUnicode_DecodeUTF8(x, strlen(x), "surrogateescape") : boost::python::detail::none();
 #else
     return x ? PyString_FromString(x) : boost::python::detail::none();
 #endif
